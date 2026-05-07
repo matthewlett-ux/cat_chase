@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Super Dog: Cat Chase</title>
+    <style>
+        :root {
+            --bg-color: #050510;       
+            --panel-bg: #0a0f1e;       
+            --text-main: #ffffff;      
+            --border-heavy: #ffffff;   
+            --theme-color: #ffcc00; 
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: "Arial Black", "Impact", -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            text-transform: uppercase;
+            background-image: radial-gradient(#2a3454 2px, transparent 2px);
+            background-size: 40px 40px;
+            overflow: hidden;
+        }
+
+        .page-title {
+            font-size: 48px;
+            font-weight: 900;
+            color: #ffcc00; 
+            text-shadow: 4px 4px 0px #000, 8px 8px 0px #ff3366;
+            margin: 0 0 20px 0;
+            -webkit-text-stroke: 2px #000; 
+            letter-spacing: 2px;
+        }
+
+        .arcade-cabinet {
+            background: var(--panel-bg);
+            border-radius: 16px;
+            padding: 30px;
+            border: 4px solid var(--border-heavy);
+            box-shadow: 16px 16px 0px #ff8c00; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            position: relative;
+        }
+
+        canvas {
+            background-color: #70c5ce; 
+            border: 4px solid var(--border-heavy);
+            border-radius: 4px;
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.3);
+            image-rendering: pixelated; 
+        }
+
+        .hud-row {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            font-size: 24px;
+            color: #ffcc00;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        .btn-connect {
+            background: #ffcc00;
+            color: #000;
+            border: 4px solid var(--border-heavy);
+            padding: 15px 40px;
+            font-size: 24px;
+            font-family: inherit;
+            font-weight: 900;
+            cursor: pointer;
+            box-shadow: 6px 6px 0px #000;
+            text-transform: uppercase;
+            animation: pulse 2s infinite;
+        }
+
+        .btn-connect:hover {
+            transform: translate(2px, 2px);
+            box-shadow: 4px 4px 0px #000;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 6px 6px 0px #000, 0 0 0px #ffcc00; }
+            50% { box-shadow: 6px 6px 0px #000, 0 0 20px #ffcc00; }
+            100% { box-shadow: 6px 6px 0px #000, 0 0 0px #ffcc00; }
+        }
+
+        #overlay {
+            position: absolute;
+            top: 70px;
+            width: 800px;
+            height: 500px;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            text-shadow: 4px 4px 0px #ff3366;
+            z-index: 10;
+            display: none;
+            text-align: center;
+        }
+        
+        #overlay span {
+            font-size: 20px;
+            text-shadow: none;
+            color: #00e5ff;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1 class="page-title">SUPER DOG: CAT CHASE</h1>
+
+    <div class="arcade-cabinet">
+        <div class="hud-row">
+            <div id="score-text">CATS CAUGHT: 0</div>
+            <div id="timer-text" style="color: #ff3366;">TIME: 60</div>
+            <div id="status-text">STATUS: WAITING</div>
+        </div>
+        
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+        
+        <div id="overlay">
+            <div id="overlay-title">TIME'S UP!</div>
+            <div id="overlay-score" style="font-size: 32px; color: #ffcc00; margin-top: 10px;"></div>
+            <span>PRESS JUMP (3) TO PLAY AGAIN</span>
+        </div>
+
+        <button class="btn-connect" id="btn-connect">INSERT MICRO:BIT</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreText = document.getElementById("score-text");
+        const timerText = document.getElementById("timer-text");
+        const statusText = document.getElementById("status-text");
+        const overlay = document.getElementById("overlay");
+        const overlayTitle = document.getElementById("overlay-title");
+        const overlayScore = document.getElementById("overlay-score");
+
+        // --- NEW IMPROVED AUDIO ENGINE ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'jump') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.15);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.start(now); osc.stop(now + 0.15);
+            } else if (type === 'splash') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.6);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+                osc.start(now); osc.stop(now + 0.6);
+            } else if (type === 'bark') {
+                // "Woof Woof!" - Double low square wave
+                const bark = (timeOffset) => {
+                    const o = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    o.connect(g); g.connect(audioCtx.destination);
+                    o.type = 'square';
+                    o.frequency.setValueAtTime(200, now + timeOffset);
+                    o.frequency.exponentialRampToValueAtTime(80, now + timeOffset + 0.1);
+                    g.gain.setValueAtTime(0.4, now + timeOffset);
+                    g.gain.exponentialRampToValueAtTime(0.01, now + timeOffset + 0.1);
+                    o.start(now + timeOffset); o.stop(now + timeOffset + 0.1);
+                };
+                bark(0); 
+                bark(0.15); // Second woof
+            } else if (type === 'meow') {
+                // "Mee-ow!" - Triangle wave sliding up then down
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.1); // Slides up
+                osc.frequency.exponentialRampToValueAtTime(300, now + 0.5); // Slides down
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.4, now + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+            } else if (type === 'gameover') {
+                const notes = [440, 349, 329, 293]; 
+                notes.forEach((freq, i) => {
+                    const o = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    o.connect(g); g.connect(audioCtx.destination);
+                    o.type = 'square'; o.frequency.value = freq;
+                    const st = now + (i * 0.2);
+                    g.gain.setValueAtTime(0.2, st);
+                    g.gain.exponentialRampToValueAtTime(0.001, st + 0.2);
+                    o.start(st); o.stop(st + 0.2);
+                });
+            }
+        }
+
+        // --- PHYSICS & GAME STATE ---
+        const GRAVITY = 0.8;       
+        const FRICTION = 0.4;      
+        
+        let gameState = "IDLE"; 
+        let score = 0;
+        let timeLeft = 60;
+        let lastTick = Date.now();
+        let superDogTimer = 0; 
+        
+        let player = { x: 100, y: 300, w: 36, h: 24, velX: 0, velY: 0, isGrounded: false, facingRight: true };
+        
+        // Cat now has a 'state' and a 'timer' for its new AI brain
+        let cat = { x: 600, y: 300, w: 24, h: 24, velX: 0, velY: 0, isGrounded: false, state: "RESTING", timer: 0 };
+        
+        let moveLeft = false;
+        let moveRight = false;
+
+        let cameraX = 0;
+        let floorY = 400;
+        
+        let puddles = [];
+        let benches = [];
+        let bones = [];
+        let nextChunkX = 0;
+
+        function generateLevelChunk() {
+            let r = Math.random();
+            if (r < 0.4) {
+                let pW = 120 + Math.random() * 100;
+                puddles.push({x: nextChunkX, w: pW});
+                benches.push({x: nextChunkX - 20, y: 340 - Math.random()*40, w: pW + 40, h: 15});
+                nextChunkX += pW + 200;
+            } else {
+                if (Math.random() < 0.3) {
+                    bones.push({x: nextChunkX + 150, y: 280, w: 20, h: 10, active: true});
+                }
+                nextChunkX += 300 + Math.random() * 200;
+            }
+        }
+
+        function buildLevel() {
+            player = { x: 100, y: 300, w: 36, h: 24, velX: 0, velY: 0, isGrounded: false, facingRight: true };
+            cat = { x: 600, y: 300, w: 24, h: 24, velX: 0, velY: 0, isGrounded: false, state: "RESTING", timer: 0 };
+            
+            cameraX = 0;
+            moveLeft = false;
+            moveRight = false;
+            
+            score = 0;
+            timeLeft = 60;
+            superDogTimer = 0;
+            lastTick = Date.now();
+            scoreText.innerText = "CATS CAUGHT: " + score;
+            timerText.innerText = "TIME: " + timeLeft;
+
+            puddles = [];
+            benches = [];
+            bones = [];
+            nextChunkX = 0;
+            
+            for(let i=0; i<10; i++) generateLevelChunk();
+            
+            overlay.style.display = 'none';
+            gameState = "PLAYING";
+        }
+
+        function checkCollision(r1, r2) {
+            return (r1.x < r2.x + r2.w && r1.x + r1.w > r2.x &&
+                    r1.y < r2.y + r2.h && r1.y + r1.h > r2.y);
+        }
+
+        function updateGame() {
+            if (gameState !== "PLAYING") return;
+
+            // --- TIMER LOGIC ---
+            if (Date.now() - lastTick > 1000) {
+                timeLeft--;
+                timerText.innerText = "TIME: " + timeLeft;
+                lastTick = Date.now();
+                if (timeLeft <= 0) {
+                    gameState = "GAMEOVER";
+                    playSound('gameover');
+                    overlayTitle.innerText = "TIME'S UP!";
+                    overlayTitle.style.color = "#ffcc00";
+                    overlayScore.innerText = "YOU CAUGHT " + score + " CATS!";
+                    overlay.style.display = 'flex';
+                }
+            }
+
+            while (nextChunkX < cameraX + 1600) {
+                generateLevelChunk();
+            }
+
+            if (superDogTimer > 0) superDogTimer--;
+            let isSuper = superDogTimer > 0;
+            
+            let currentMoveSpeed = isSuper ? 12.0 : 8.0; 
+            let currentJumpPower = isSuper ? -18 : -14;  
+
+            // --- DOG LOGIC ---
+            if (moveLeft) { player.velX -= currentMoveSpeed; player.facingRight = false; }
+            if (moveRight) { player.velX += currentMoveSpeed; player.facingRight = true; }
+
+            player.velX *= FRICTION;
+            player.velY += GRAVITY;
+            player.x += player.velX;
+            player.y += player.velY;
+
+            if (player.x < 0) { player.x = 0; player.velX = 0; }
+
+            // --- NEW SCAREDY CAT AI ---
+            cat.velY += GRAVITY;
+            cat.velX *= FRICTION;
+            
+            if (cat.state === "RESTING") {
+                // If dog gets closer than 350 pixels, the cat gets spooked!
+                if (cat.x - player.x < 350 && cat.x - player.x > -50) {
+                    cat.state = "PANIC";
+                    cat.timer = 40; // Run away for 40 frames
+                    cat.velY = -10; // Jump up in surprise!
+                }
+            } else if (cat.state === "PANIC") {
+                cat.velX += 4.5; // Sprint!
+                cat.timer--;
+                
+                // Random jumping while panicking
+                if (cat.isGrounded && Math.random() < 0.05) {
+                    cat.velY = -12;
+                    cat.isGrounded = false;
+                }
+
+                // Stop and catch breath
+                if (cat.timer <= 0) {
+                    cat.state = "RESTING";
+                }
+            }
+            
+            cat.x += cat.velX;
+            cat.y += cat.velY;
+
+            // --- CAMERA LOGIC ---
+            let targetCameraX = player.x - 200;
+            if (targetCameraX < 0) targetCameraX = 0;
+            cameraX = targetCameraX;
+
+            // --- COLLISION LOGIC ---
+            player.isGrounded = false;
+            cat.isGrounded = false;
+            let inPuddle = false;
+
+            for (let p of puddles) {
+                if (player.x + player.w > p.x && player.x < p.x + p.w) inPuddle = true; 
+            }
+
+            if (player.y + player.h >= floorY) {
+                if (inPuddle && !isSuper) { 
+                    gameState = "GAMEOVER";
+                    playSound('splash');
+                    overlayTitle.innerText = "MUDDY DOG!";
+                    overlayTitle.style.color = "#8B4513";
+                    overlayScore.innerText = "CATS CAUGHT: " + score;
+                    overlay.style.display = 'flex';
+                } else {
+                    player.isGrounded = true;
+                    player.velY = 0;
+                    player.y = floorY - player.h;
+                }
+            }
+            
+            if (cat.y + cat.h >= floorY) {
+                cat.isGrounded = true; cat.velY = 0; cat.y = floorY - cat.h;
+            }
+
+            for (let b of benches) {
+                if (checkCollision(player, b) && player.velY > 0 && player.y + player.h - player.velY <= b.y + 10) {
+                    player.isGrounded = true; player.velY = 0; player.y = b.y - player.h;
+                }
+                if (checkCollision(cat, b) && cat.velY > 0 && cat.y + cat.h - cat.velY <= b.y + 10) {
+                    cat.isGrounded = true; cat.velY = 0; cat.y = b.y - cat.h;
+                }
+            }
+
+            for (let b of bones) {
+                if (b.active && checkCollision(player, b)) {
+                    b.active = false;
+                    superDogTimer = 360; 
+                    playSound('bark');
+                }
+            }
+
+            // Catching the Cat!
+            if (checkCollision(player, cat)) {
+                score++;
+                scoreText.innerText = "CATS CAUGHT: " + score;
+                playSound('meow');
+                cat.x = player.x + 600; // Respawn
+                cat.y = 100;
+                cat.velX = 0;
+                cat.state = "RESTING"; // Reset its brain
+            }
+        }
+
+        function triggerJump() {
+            if (gameState === "GAMEOVER") {
+                buildLevel(); 
+            } else if (gameState === "PLAYING" && player.isGrounded) {
+                let isSuper = superDogTimer > 0;
+                player.velY = isSuper ? -18 : -14;
+                player.isGrounded = false;
+                playSound('jump');
+            }
+        }
+
+        // --- HELPER FUNCTION TO DRAW THE DOG ---
+        function drawDog(dx, dy, facingRight, velX, isSuper) {
+            if (isSuper && Math.abs(velX) > 2) {
+                ctx.fillStyle = "rgba(255, 215, 0, 0.4)";
+                ctx.fillRect(dx - velX*2, dy, 36, 24);
+            }
+
+            ctx.fillStyle = isSuper ? "#FFD700" : "#8B4513"; 
+            ctx.fillRect(dx, dy, 36, 24);
+            ctx.fillStyle = isSuper ? "#DAA520" : "#5C4033";
+            ctx.fillRect(dx + (facingRight ? 4 : 24), dy, 8, 14);
+            
+            ctx.fillStyle = "#000000";
+            if (facingRight) {
+                ctx.fillRect(dx + 36, dy + 6, 6, 6);
+            } else {
+                ctx.fillRect(dx - 6, dy + 6, 6, 6);
+            }
+            
+            ctx.fillStyle = isSuper ? "#FFD700" : "#8B4513";
+            let wagSpeed = Math.abs(velX) > 1 ? 50 : 200; // Wags fast when running, slow when idle
+            let tailY = dy + 4 + (Math.sin(Date.now()/wagSpeed) * 4);
+            if (facingRight) {
+                ctx.fillRect(dx - 8, tailY, 8, 6);
+            } else {
+                ctx.fillRect(dx + 36, tailY, 8, 6);
+            }
+        }
+
+        // --- RENDER ENGINE ---
+        function draw() {
+            ctx.fillStyle = "#70c5ce";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Scenery
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(100 - ((cameraX * 0.2) % 800), 100, 80, 30);
+            ctx.fillRect(400 - ((cameraX * 0.2) % 800), 80, 120, 40);
+            
+            ctx.fillStyle = "#228B22"; 
+            ctx.fillRect(250 - ((cameraX * 0.5) % 800), 250, 60, 150);
+            ctx.fillRect(700 - ((cameraX * 0.5) % 800), 200, 80, 200);
+
+            // Floor
+            ctx.fillStyle = "#3cb371";
+            ctx.fillRect(0, floorY, canvas.width, canvas.height - floorY);
+            
+            if (gameState === "IDLE") {
+                // EXCITING START SCREEN ANIMATION!
+                let bounceY = floorY - 24 + (Math.abs(Math.sin(Date.now() / 150)) * -30);
+                drawDog(150, bounceY, true, 0, false);
+                return; // Don't draw the rest of the game yet
+            }
+
+            // Puddles
+            ctx.fillStyle = "#4a3525"; 
+            for (let p of puddles) {
+                if (p.x - cameraX > -200 && p.x - cameraX < canvas.width) {
+                    ctx.fillRect(p.x - cameraX, floorY, p.w, canvas.height - floorY);
+                    ctx.fillStyle = "#6b503b";
+                    ctx.fillRect(p.x - cameraX + 10, floorY + 10, p.w - 20, 5);
+                    ctx.fillStyle = "#4a3525"; 
+                }
+            }
+
+            // Benches
+            for (let b of benches) {
+                if (b.x - cameraX > -200 && b.x - cameraX < canvas.width) {
+                    ctx.fillStyle = "#d2b48c"; 
+                    ctx.fillRect(b.x - cameraX, b.y, b.w, b.h);
+                    ctx.fillStyle = "#8b4513";
+                    ctx.fillRect(b.x - cameraX + 10, b.y + b.h, 10, floorY - (b.y + b.h));
+                    ctx.fillRect(b.x - cameraX + b.w - 20, b.y + b.h, 10, floorY - (b.y + b.h));
+                }
+            }
+
+            // Bones
+            ctx.fillStyle = "#ffffff";
+            for (let b of bones) {
+                if (b.active && b.x - cameraX > -100 && b.x - cameraX < canvas.width) {
+                    let floatY = b.y + Math.sin(Date.now() / 150) * 10;
+                    ctx.fillRect(b.x - cameraX, floatY, b.w, b.h);
+                    ctx.fillRect(b.x - cameraX - 4, floatY - 4, 8, 8);
+                    ctx.fillRect(b.x - cameraX - 4, floatY + 6, 8, 8);
+                    ctx.fillRect(b.x - cameraX + b.w - 4, floatY - 4, 8, 8);
+                    ctx.fillRect(b.x - cameraX + b.w - 4, floatY + 6, 8, 8);
+                }
+            }
+
+            // --- DRAW THE CAT ---
+            ctx.fillStyle = "#FF8C00"; 
+            ctx.fillRect(cat.x - cameraX, cat.y, cat.w, cat.h);
+            ctx.fillRect(cat.x - cameraX + 2, cat.y - 6, 6, 6);
+            ctx.fillRect(cat.x - cameraX + cat.w - 8, cat.y - 6, 6, 6);
+            ctx.fillStyle = "#FFF";
+            ctx.fillRect(cat.x - cameraX + 4, cat.y + 4, 6, 6);
+            ctx.fillRect(cat.x - cameraX + cat.w - 10, cat.y + 4, 6, 6);
+            ctx.fillStyle = "#000";
+            
+            // Cat looks away if running, looks at dog if resting
+            let pupilOffset = (cat.state === "PANIC") ? 6 : 2;
+            ctx.fillRect(cat.x - cameraX + pupilOffset, cat.y + 6, 2, 2); 
+            ctx.fillRect(cat.x - cameraX + cat.w - 12 + pupilOffset, cat.y + 6, 2, 2);
+            
+            ctx.fillStyle = "#FF8C00";
+            ctx.fillRect(cat.x - cameraX - 8, cat.y + cat.h - 8, 10, 4);
+
+            // --- DRAW THE DOG ---
+            drawDog(player.x - cameraX, player.y, player.facingRight, player.velX, superDogTimer > 0);
+        }
+
+        function gameLoop() {
+            updateGame();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- HARDWARE BRIDGE ---
+        let port;
+        let reader;
+
+        async function connectMicroBit() {
+            initAudio();
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+
+                statusText.innerText = "CONTROLLER SECURED";
+                statusText.style.color = "#33ff77";
+                document.getElementById('btn-connect').style.display = 'none';
+                
+                // Let the player see the idle screen for a moment, then start
+                setTimeout(() => { buildLevel(); }, 1000);
+
+                const textDecoder = new TextDecoderStream();
+                const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+                reader = textDecoder.readable.getReader();
+
+                let buffer = "";
+                while (port.readable) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += value;
+                    let lines = buffer.split('\n');
+                    buffer = lines.pop(); 
+                    
+                    for (let line of lines) {
+                        let cmd = line.trim();
+                        if (cmd === "1") { moveLeft = true; moveRight = false; }
+                        else if (cmd === "2") { moveRight = true; moveLeft = false; }
+                        else if (cmd === "0") { moveLeft = false; moveRight = false; }
+                        else if (cmd === "3") { triggerJump(); }
+                    }
+                }
+            } catch (error) {
+                statusText.innerText = "CONNECTION FAILED.";
+                statusText.style.color = "#ff3366";
+            }
+        }
+
+        document.getElementById('btn-connect').addEventListener('click', connectMicroBit);
+
+        window.addEventListener('keydown', (e) => {
+            initAudio(); 
+            if (gameState === "IDLE") {
+                document.getElementById('btn-connect').style.display = 'none';
+                statusText.innerText = "KEYBOARD OVERRIDE";
+                buildLevel();
+            }
+            if (e.key === 'ArrowLeft') { moveLeft = true; moveRight = false; }
+            if (e.key === 'ArrowRight') { moveRight = true; moveLeft = false; }
+            if (e.key === ' ' || e.key === 'ArrowUp') triggerJump();
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft') moveLeft = false;
+            if (e.key === 'ArrowRight') moveRight = false;
+        });
+
+        requestAnimationFrame(gameLoop); // Start drawing immediately for the IDLE screen
+    </script>
+</body>
+</html>
